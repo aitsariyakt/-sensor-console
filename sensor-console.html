@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SENSOR CONSOLE — ทดสอบเซ็นเซอร์มือถือผ่านเว็บ</title>
+<style>
+  :root{
+    --bg: #0A0D12;
+    --panel: #10151D;
+    --panel-2: #151B25;
+    --line: #232B38;
+    --phosphor: #7CFFB2;
+    --phosphor-dim: #4A9E6E;
+    --amber: #FFB454;
+    --red: #FF6B6B;
+    --text: #E4E9F2;
+    --text-dim: #7C8698;
+    --mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "Space Grotesk", "Segoe UI", -apple-system, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -10%, #131A24 0%, var(--bg) 60%);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+  }
+
+  /* ---- scanline / grid texture ---- */
+  .grid-overlay{
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(rgba(124,255,178,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,255,178,0.025) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  header{
+    position:relative; z-index:1;
+    padding:28px 20px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(124,255,178,0.05), transparent);
+  }
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+    color:var(--phosphor-dim); text-transform:uppercase;
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--phosphor);
+    box-shadow:0 0 8px var(--phosphor); animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
+  h1{
+    font-family:var(--sans); font-weight:700; font-size:clamp(26px,6vw,40px);
+    margin:0 0 8px; letter-spacing:-0.01em; line-height:1.05;
+  }
+  h1 span{ color:var(--phosphor); }
+  .sub{ color:var(--text-dim); font-size:14.5px; max-width:640px; line-height:1.6; }
+  .platform-badge{
+    display:inline-flex; align-items:center; gap:6px; margin-top:14px;
+    font-family:var(--mono); font-size:11.5px; padding:5px 10px;
+    border:1px solid var(--line); border-radius:20px; color:var(--text-dim);
+  }
+  .platform-badge b{ color:var(--phosphor); font-weight:600; }
+
+  main{ position:relative; z-index:1; max-width:920px; margin:0 auto; padding:26px 16px 0; }
+
+  .https-warn{
+    display:none; margin:0 0 22px; padding:12px 14px; border:1px solid #4A3418;
+    background:rgba(255,180,84,0.07); border-radius:8px; font-size:13px;
+    color:var(--amber); font-family:var(--mono); line-height:1.5;
+  }
+
+  section.module{
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line); border-radius:12px;
+    margin-bottom:16px; overflow:hidden;
+  }
+  .m-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--line); gap:12px; flex-wrap:wrap;
+  }
+  .m-title{ display:flex; align-items:baseline; gap:10px; }
+  .m-num{ font-family:var(--mono); font-size:11px; color:var(--phosphor-dim); }
+  .m-name{ font-weight:700; font-size:16.5px; letter-spacing:-0.01em; }
+  .m-status{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+    padding:3px 9px; border-radius:20px; text-transform:uppercase;
+    border:1px solid var(--line); color:var(--text-dim);
+  }
+  .m-status.live{ color:var(--phosphor); border-color:var(--phosphor-dim); }
+  .m-status.denied{ color:var(--red); border-color:#5A2A2A; }
+
+  .m-body{ padding:16px 18px 18px; }
+  .m-desc{ font-size:13.5px; color:var(--text-dim); line-height:1.6; margin-bottom:14px; }
+
+  button.act{
+    font-family:var(--mono); font-size:12.5px; letter-spacing:.04em;
+    background:transparent; color:var(--phosphor); border:1px solid var(--phosphor-dim);
+    padding:9px 16px; border-radius:7px; cursor:pointer; transition:.15s;
+    text-transform:uppercase;
+  }
+  button.act:hover{ background:rgba(124,255,178,0.08); }
+  button.act:active{ transform:scale(.98); }
+  button.act:disabled{ opacity:.35; cursor:not-allowed; }
+  button.act.stop{ color:var(--red); border-color:#5A2A2A; }
+  button.act.stop:hover{ background:rgba(255,107,107,0.08); }
+
+  .readout{
+    font-family:var(--mono); font-size:13px; background:#080B10;
+    border:1px solid var(--line); border-radius:8px; padding:12px 14px;
+    margin-top:12px; color:var(--phosphor); min-height:20px;
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:6px 18px;
+  }
+  .readout .r-item{ display:flex; justify-content:space-between; gap:8px; }
+  .readout .r-label{ color:var(--text-dim); }
+  .readout.empty{ color:var(--text-dim); font-style:italic; }
+
+  /* compass */
+  .compass-wrap{ display:flex; align-items:center; gap:20px; margin-top:12px; flex-wrap:wrap; }
+  .compass-face{
+    width:120px; height:120px; border-radius:50%; border:1px solid var(--line);
+    position:relative; flex-shrink:0; background:radial-gradient(circle, #0D1219, #080B10);
+  }
+  .compass-needle{
+    position:absolute; left:50%; top:50%; width:2px; height:46px;
+    background:linear-gradient(var(--phosphor), transparent);
+    transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
+    transition:transform .15s ease-out;
+  }
+  .compass-n{ position:absolute; top:6px; left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:10px; color:var(--text-dim); }
+
+  /* mic level */
+  .meter{ height:8px; background:#080B10; border:1px solid var(--line); border-radius:4px;
+    overflow:hidden; margin-top:12px; }
+  .meter-fill{ height:100%; width:0%; background:linear-gradient(90deg, var(--phosphor-dim), var(--phosphor));
+    transition:width .08s linear; }
+
+  video#camPreview{ width:100%; max-width:320px; border-radius:8px; margin-top:12px;
+    border:1px solid var(--line); background:#000; display:block; }
+
+  .caveat{ font-size:11.5px; color:var(--text-dim); margin-top:10px; line-height:1.55;
+    border-left:2px solid var(--amber); padding-left:10px; }
+  .caveat b{ color:var(--amber); font-weight:600; }
+
+  /* summary tables */
+  .knowledge{
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line); border-radius:12px; padding:20px 20px 8px; margin-top:28px;
+  }
+  .knowledge h2{ font-size:19px; margin:0 0 4px; }
+  .knowledge .k-sub{ color:var(--text-dim); font-size:13px; margin-bottom:16px; }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:20px; }
+  th{ text-align:left; font-family:var(--mono); font-size:10.5px; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--phosphor-dim); padding:8px 10px; border-bottom:1px solid var(--line); }
+  td{ padding:9px 10px; border-bottom:1px solid var(--line); color:var(--text-dim); vertical-align:top; }
+  td.k-name{ color:var(--text); font-weight:600; white-space:nowrap; }
+  td b{ color:var(--amber); font-weight:600; }
+  td.ok{ color:var(--phosphor); }
+  td.no{ color:var(--red); }
+
+  footer{ text-align:center; padding:30px 16px 10px; color:var(--text-dim); font-family:var(--mono); font-size:11px; }
+</style>
+</head>
+<body>
+<div class="grid-overlay"></div>
+
+<header>
+  <div class="eyebrow"><span class="dot"></span> WEB SENSOR CONSOLE · NO SDK · NO APP STORE</div>
+  <h1>เรียกเซ็นเซอร์มือถือ<br><span>จากหน้าเว็บธรรมดา</span></h1>
+  <div class="sub">มือถือทุกเครื่องมีเข็มทิศ ไจโรสโคป ความเร่ง GPS กล้อง ไมค์ และมอเตอร์สั่นอยู่แล้ว หน้านี้เรียกใช้ผ่าน Web API ล้วน ๆ ไม่มี native code — กดปุ่มแต่ละโมดูลด้านล่างเพื่อขอสิทธิ์และดูค่าจริงแบบสด</div>
+  <div class="platform-badge" id="platformBadge">กำลังตรวจสอบแพลตฟอร์ม…</div>
+</header>
+
+<main>
+  <div class="https-warn" id="httpsWarn">⚠ หน้านี้ไม่ได้เปิดผ่าน HTTPS — iOS Safari จะปฏิเสธ Geolocation, Camera/Mic และ Motion API ทั้งหมด ต้อง deploy ผ่าน HTTPS จริง (หรือ localhost ตอนพัฒนา) เท่านั้น</div>
+
+  <!-- 1. COMPASS -->
+  <section class="module" id="mod-compass">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">01</span><span class="m-name">เข็มทิศ</span></div>
+      <div class="m-status" id="st-compass">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">อ่านทิศทางที่มือถือหันอยู่ผ่าน <code>DeviceOrientationEvent</code>. iOS ให้ค่า <code>webkitCompassHeading</code> ตรง ๆ (0° = เหนือ) ส่วน Android ต้องคำนวณจาก <code>alpha</code> เอง</div>
+      <button class="act" onclick="Sensors.compass.start()">ขอสิทธิ์ + เริ่มอ่าน</button>
+      <div class="compass-wrap">
+        <div class="compass-face"><div class="compass-n">N</div><div class="compass-needle" id="needle"></div></div>
+        <div class="readout empty" id="out-compass">ยังไม่มีข้อมูล</div>
+      </div>
+      <div class="caveat"><b>ข้อจำกัด:</b> iOS 13+ ต้องกดปุ่มก่อนถึงจะขอสิทธิ์ได้ (เรียกจาก JS อัตโนมัติไม่ได้) และต้องเป็น HTTPS เท่านั้น</div>
+    </div>
+  </section>
+
+  <!-- 2. ACCELEROMETER -->
+  <section class="module" id="mod-accel">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">02</span><span class="m-name">เซ็นเซอร์ความเร่ง</span></div>
+      <div class="m-status" id="st-accel">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">อ่านความเร่งตามแกน X/Y/Z ผ่าน <code>DeviceMotionEvent.accelerationIncludingGravity</code> ใช้ตรวจจับการเขย่า การเอียง หรือการเคลื่อนไหว</div>
+      <button class="act" onclick="Sensors.accel.start()">ขอสิทธิ์ + เริ่มอ่าน</button>
+      <div class="readout empty" id="out-accel">ยังไม่มีข้อมูล</div>
+      <div class="caveat"><b>ข้อจำกัด:</b> ใช้ permission request เดียวกับไจโรสโคปบน iOS (<code>DeviceMotionEvent.requestPermission()</code>) กดครั้งเดียวได้ทั้งคู่ถ้าเขียนรวมกัน</div>
+    </div>
+  </section>
+
+  <!-- 3. GYROSCOPE -->
+  <section class="module" id="mod-gyro">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">03</span><span class="m-name">ไจโรสโคป</span></div>
+      <div class="m-status" id="st-gyro">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">อ่านอัตราการหมุน (deg/s) รอบแต่ละแกนผ่าน <code>DeviceMotionEvent.rotationRate</code> — alpha/beta/gamma</div>
+      <button class="act" onclick="Sensors.gyro.start()">ขอสิทธิ์ + เริ่มอ่าน</button>
+      <div class="readout empty" id="out-gyro">ยังไม่มีข้อมูล</div>
+      <div class="caveat"><b>ข้อจำกัด:</b> iOS Safari บางเวอร์ชันคืนค่า <code>null</code> สำหรับ rotationRate แม้ได้สิทธิ์แล้ว — เป็น known limitation ไม่ใช่บั๊กของโค้ด</div>
+    </div>
+  </section>
+
+  <!-- 4. GPS -->
+  <section class="module" id="mod-gps">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">04</span><span class="m-name">GPS / ตำแหน่ง</span></div>
+      <div class="m-status" id="st-gps">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">ใช้ <code>navigator.geolocation.watchPosition()</code> ได้ทั้งพิกัด ความแม่นยำ ความเร็ว และทิศ (heading) แบบสดต่อเนื่อง</div>
+      <button class="act" onclick="Sensors.gps.start()">ขอสิทธิ์ + เริ่มติดตาม</button>
+      <button class="act stop" onclick="Sensors.gps.stop()">หยุด</button>
+      <div class="readout empty" id="out-gps">ยังไม่มีข้อมูล</div>
+      <div class="caveat"><b>ข้อจำกัด:</b> iOS จะถามสิทธิ์ครั้งเดียวต่อ session ของ Safari ถ้าปฏิเสธไปแล้วต้องไปเปิดใหม่ใน Settings → Safari → Location ด้วยตัวเอง โค้ดสั่งเปิดใหม่ไม่ได้</div>
+    </div>
+  </section>
+
+  <!-- 5. CAMERA -->
+  <section class="module" id="mod-cam">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">05</span><span class="m-name">กล้อง</span></div>
+      <div class="m-status" id="st-cam">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">ใช้ <code>navigator.mediaDevices.getUserMedia({video:true})</code> เปิด live preview ได้ทันที ถ่ายภาพนิ่งด้วย <code>&lt;canvas&gt;</code> วาดเฟรมจาก video</div>
+      <button class="act" onclick="Sensors.cam.start()">ขอสิทธิ์ + เปิดกล้อง</button>
+      <button class="act stop" onclick="Sensors.cam.stop()">ปิดกล้อง</button>
+      <video id="camPreview" playsinline muted autoplay></video>
+      <div class="caveat"><b>ข้อจำกัด:</b> เว็บทำได้แค่ preview/ถ่ายภาพ/อัดวิดีโอสั้น ๆ ผ่าน MediaRecorder — เข้าถึงโหมด RAW, Portrait, หรือควบคุม hardware ระดับลึกแบบแอปเนทีฟไม่ได้เลย</div>
+    </div>
+  </section>
+
+  <!-- 6. MIC -->
+  <section class="module" id="mod-mic">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">06</span><span class="m-name">ไมโครโฟน</span></div>
+      <div class="m-status" id="st-mic">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">ใช้ <code>getUserMedia({audio:true})</code> ร่วมกับ Web Audio API (<code>AnalyserNode</code>) วัดระดับเสียงสดแบบ real-time</div>
+      <button class="act" onclick="Sensors.mic.start()">ขอสิทธิ์ + เริ่มฟัง</button>
+      <button class="act stop" onclick="Sensors.mic.stop()">หยุด</button>
+      <div class="meter"><div class="meter-fill" id="micMeter"></div></div>
+      <div class="readout empty" id="out-mic" style="margin-top:10px">ยังไม่มีข้อมูล</div>
+      <div class="caveat"><b>ข้อจำกัด:</b> ไม่มีสิทธิ์ background — พอสลับแท็บหรือ lock หน้าจอ mic จะถูกตัดทันที ต่างจากแอปเนทีฟที่อัดต่อได้</div>
+    </div>
+  </section>
+
+  <!-- 7. VIBRATION -->
+  <section class="module" id="mod-vib">
+    <div class="m-head">
+      <div class="m-title"><span class="m-num">07</span><span class="m-name">มอเตอร์สั่น</span></div>
+      <div class="m-status" id="st-vib">รอเริ่ม</div>
+    </div>
+    <div class="m-body">
+      <div class="m-desc">มาตรฐานคือ <code>navigator.vibrate(pattern)</code> — ไม่ต้องขอสิทธิ์ เรียกแล้วสั่นทันที</div>
+      <button class="act" onclick="Sensors.vib.test()">ทดสอบสั่น (200ms)</button>
+      <button class="act" onclick="Sensors.vib.pattern()">รูปแบบจังหวะ</button>
+      <div class="readout empty" id="out-vib">ยังไม่มีข้อมูล</div>
+      <div class="caveat"><b>ข้อจำกัด (สำคัญ):</b> <b>iOS Safari ไม่รองรับ Vibration API เลย</b> — ปุ่มจะกดได้แต่ไม่มีอะไรเกิดขึ้นจริง ต้องใช้แอปเนทีฟหรือ Haptic API ของ PWA บางตัวแทน (ยังไม่เสถียร) นี่คือความต่างของแพลตฟอร์มที่ชัดที่สุดในหน้านี้</div>
+    </div>
+  </section>
+
+  <div class="knowledge">
+    <h2>สรุป: ข้อจำกัดที่ต้องรู้ก่อนใช้จริง</h2>
+    <div class="k-sub">เทียบ iOS Safari กับ Android Chrome สำหรับแต่ละเซ็นเซอร์</div>
+    <table>
+      <tr><th>เซ็นเซอร์</th><th>API</th><th>iOS Safari</th><th>Android Chrome</th></tr>
+      <tr><td class="k-name">เข็มทิศ</td><td>webkitCompassHeading / alpha</td><td class="ok">ใช้ได้ ต้องขอสิทธิ์</td><td class="ok">ใช้ได้ ไม่ต้องขอสิทธิ์ (ต้อง HTTPS)</td></tr>
+      <tr><td class="k-name">Accel/ไจโร</td><td>DeviceMotionEvent</td><td class="ok">ใช้ได้ ต้องขอสิทธิ์จาก user gesture</td><td class="ok">ใช้ได้ อัตโนมัติ</td></tr>
+      <tr><td class="k-name">GPS</td><td>Geolocation API</td><td class="ok">ใช้ได้ ขอสิทธิ์ครั้งเดียว/session</td><td class="ok">ใช้ได้ ขอสิทธิ์ถาวรได้</td></tr>
+      <tr><td class="k-name">กล้อง/ไมค์</td><td>getUserMedia</td><td class="ok">ใช้ได้ ต้อง HTTPS</td><td class="ok">ใช้ได้ ต้อง HTTPS</td></tr>
+      <tr><td class="k-name">มอเตอร์สั่น</td><td>navigator.vibrate</td><td class="no">ไม่รองรับเลย</td><td class="ok">ใช้ได้เต็มรูปแบบ</td></tr>
+      <tr><td class="k-name">Background</td><td>ทุกตัว</td><td class="no">ตัดทันทีเมื่อออกจากแท็บ</td><td class="no">ตัดทันทีเมื่อออกจากแท็บ</td></tr>
+    </table>
+    <h2>เงื่อนไขที่ต้องมีเสมอ</h2>
+    <div class="k-sub">ไม่ว่าจะเป็นเซ็นเซอร์ไหน ทุกตัวต้องผ่านเงื่อนไขนี้ก่อน</div>
+    <table>
+      <tr><th>เงื่อนไข</th><th>รายละเอียด</th></tr>
+      <tr><td class="k-name">HTTPS</td><td>Browser ปฏิเสธ Motion/Location/Media API ทั้งหมดถ้าไม่ใช่ HTTPS (ยกเว้น localhost ตอน dev)</td></tr>
+      <tr><td class="k-name">User gesture</td><td>iOS บังคับให้ขอสิทธิ์ Motion/Orientation ต้องอยู่ใน event handler ของการกดปุ่มจริง เรียกตอนโหลดหน้าไม่ได้</td></tr>
+      <tr><td class="k-name">Permission ต่อ session</td><td>Safari มักถามสิทธิ์ใหม่ทุกครั้งที่รีเฟรชหรือเปิดแท็บใหม่ ต่างจาก native app ที่จำสิทธิ์ถาวร</td></tr>
+      <tr><td class="k-name">ไม่มี background</td><td>สลับแอปหรือ lock จอ = เซ็นเซอร์ทุกตัวหยุดทำงานทันที ไม่มีทางอ่านค่าเบื้องหลังได้</td></tr>
+    </table>
+  </div>
+</main>
+
+<footer>SENSOR CONSOLE · Web APIs only · ไม่มีการส่งข้อมูลออกจากเครื่อง</footer>
+
+<script>
+(function(){
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
+  document.getElementById('platformBadge').innerHTML =
+    (isIOS ? '<b>iOS</b> detected' : '<b>Non-iOS</b> detected') + ' · ' + (isSecure ? 'HTTPS OK' : 'ไม่ใช่ HTTPS');
+  if(!isSecure) document.getElementById('httpsWarn').style.display = 'block';
+
+  function setStatus(id, text, cls){
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'm-status' + (cls ? ' ' + cls : '');
+  }
+  function setOut(id, html){
+    const el = document.getElementById(id);
+    el.className = 'readout';
+    el.innerHTML = html;
+  }
+  function row(label, val){
+    return `<div class="r-item"><span class="r-label">${label}</span><span>${val}</span></div>`;
+  }
+
+  window.Sensors = {
+
+    compass: {
+      start(){
+        const go = () => {
+          window.addEventListener('deviceorientation', (e) => {
+            let heading = e.webkitCompassHeading !== undefined ? e.webkitCompassHeading : (360 - e.alpha);
+            if(heading == null || isNaN(heading)) { setStatus('st-compass','ไม่มีค่า','denied'); return; }
+            setStatus('st-compass','LIVE','live');
+            document.getElementById('needle').style.transform = `translate(-50%,-100%) rotate(${heading}deg)`;
+            setOut('out-compass', row('ทิศ (heading)', heading.toFixed(1) + '°'));
+          }, true);
+        };
+        if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+          DeviceOrientationEvent.requestPermission().then(state => {
+            if(state === 'granted'){ go(); } else { setStatus('st-compass','ปฏิเสธสิทธิ์','denied'); }
+          }).catch(()=> setStatus('st-compass','ผิดพลาด','denied'));
+        } else if('DeviceOrientationEvent' in window){
+          go();
+        } else {
+          setStatus('st-compass','ไม่รองรับ','denied');
+        }
+      }
+    },
+
+    accel: {
+      start(){
+        const go = () => {
+          window.addEventListener('devicemotion', (e) => {
+            const a = e.accelerationIncludingGravity;
+            if(!a || a.x === null){ setStatus('st-accel','ไม่มีค่า','denied'); return; }
+            setStatus('st-accel','LIVE','live');
+            setOut('out-accel', row('X', a.x.toFixed(2)) + row('Y', a.y.toFixed(2)) + row('Z', a.z.toFixed(2)));
+          });
+        };
+        if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+          DeviceMotionEvent.requestPermission().then(state => {
+            if(state === 'granted'){ go(); } else { setStatus('st-accel','ปฏิเสธสิทธิ์','denied'); }
+          }).catch(()=> setStatus('st-accel','ผิดพลาด','denied'));
+        } else if('DeviceMotionEvent' in window){
+          go();
+        } else {
+          setStatus('st-accel','ไม่รองรับ','denied');
+        }
+      }
+    },
+
+    gyro: {
+      start(){
+        const go = () => {
+          window.addEventListener('devicemotion', (e) => {
+            const r = e.rotationRate;
+            if(!r || r.alpha === null){ setStatus('st-gyro','ไม่มีค่า (known iOS limitation)','denied'); return; }
+            setStatus('st-gyro','LIVE','live');
+            setOut('out-gyro', row('Alpha', r.alpha.toFixed(1)) + row('Beta', r.beta.toFixed(1)) + row('Gamma', r.gamma.toFixed(1)));
+          });
+        };
+        if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+          DeviceMotionEvent.requestPermission().then(state => {
+            if(state === 'granted'){ go(); } else { setStatus('st-gyro','ปฏิเสธสิทธิ์','denied'); }
+          }).catch(()=> setStatus('st-gyro','ผิดพลาด','denied'));
+        } else if('DeviceMotionEvent' in window){
+          go();
+        } else {
+          setStatus('st-gyro','ไม่รองรับ','denied');
+        }
+      }
+    },
+
+    gps: {
+      watchId: null,
+      start(){
+        if(!('geolocation' in navigator)){ setStatus('st-gps','ไม่รองรับ','denied'); return; }
+        setStatus('st-gps','กำลังขอสิทธิ์…');
+        this.watchId = navigator.geolocation.watchPosition((pos) => {
+          setStatus('st-gps','LIVE','live');
+          const c = pos.coords;
+          setOut('out-gps',
+            row('Lat', c.latitude.toFixed(5)) + row('Lng', c.longitude.toFixed(5)) +
+            row('ความแม่นยำ', c.accuracy.toFixed(0) + ' m') +
+            row('ความเร็ว', c.speed ? c.speed.toFixed(1) + ' m/s' : '—') +
+            row('ทิศ', c.heading ? c.heading.toFixed(0) + '°' : '—')
+          );
+        }, (err) => {
+          setStatus('st-gps', 'ปฏิเสธ/ผิดพลาด: ' + err.message, 'denied');
+        }, { enableHighAccuracy:true, maximumAge:1000 });
+      },
+      stop(){
+        if(this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
+        setStatus('st-gps','หยุดแล้ว');
+      }
+    },
+
+    cam: {
+      stream: null,
+      async start(){
+        try{
+          setStatus('st-cam','กำลังขอสิทธิ์…');
+          this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } });
+          document.getElementById('camPreview').srcObject = this.stream;
+          setStatus('st-cam','LIVE','live');
+        } catch(err){
+          setStatus('st-cam','ปฏิเสธ/ผิดพลาด: ' + err.message, 'denied');
+        }
+      },
+      stop(){
+        if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream = null; }
+        document.getElementById('camPreview').srcObject = null;
+        setStatus('st-cam','หยุดแล้ว');
+      }
+    },
+
+    mic: {
+      stream:null, ctx:null, raf:null,
+      async start(){
+        try{
+          setStatus('st-mic','กำลังขอสิทธิ์…');
+          this.stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+          setStatus('st-mic','LIVE','live');
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const src = this.ctx.createMediaStreamSource(this.stream);
+          const analyser = this.ctx.createAnalyser();
+          analyser.fftSize = 512;
+          src.connect(analyser);
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          const loop = () => {
+            analyser.getByteFrequencyData(data);
+            const avg = data.reduce((a,b)=>a+b,0) / data.length;
+            const pct = Math.min(100, (avg / 128) * 100);
+            document.getElementById('micMeter').style.width = pct.toFixed(0) + '%';
+            setOut('out-mic', row('ระดับเสียงเฉลี่ย', avg.toFixed(1)) + row('% ของสเกล', pct.toFixed(0) + '%'));
+            this.raf = requestAnimationFrame(loop);
+          };
+          loop();
+        } catch(err){
+          setStatus('st-mic','ปฏิเสธ/ผิดพลาด: ' + err.message, 'denied');
+        }
+      },
+      stop(){
+        if(this.raf) cancelAnimationFrame(this.raf);
+        if(this.stream){ this.stream.getTracks().forEach(t=>t.stop()); this.stream=null; }
+        if(this.ctx){ this.ctx.close(); this.ctx=null; }
+        document.getElementById('micMeter').style.width = '0%';
+        setStatus('st-mic','หยุดแล้ว');
+      }
+    },
+
+    vib: {
+      test(){
+        if('vibrate' in navigator){
+          const ok = navigator.vibrate(200);
+          setStatus('st-vib', ok ? 'สั่นแล้ว (ถ้ารองรับ)' : 'API มีแต่คืน false', ok?'live':'denied');
+          setOut('out-vib', row('เรียก', 'navigator.vibrate(200)') + row('ผลลัพธ์', ok));
+        } else {
+          setStatus('st-vib','ไม่รองรับ (คาดว่าเป็น iOS)','denied');
+          setOut('out-vib', row('navigator.vibrate', 'undefined — ไม่มีใน iOS Safari'));
+        }
+      },
+      pattern(){
+        if('vibrate' in navigator){
+          const ok = navigator.vibrate([100,50,100,50,300]);
+          setStatus('st-vib', ok ? 'เล่นจังหวะแล้ว' : 'API มีแต่คืน false', ok?'live':'denied');
+        } else {
+          setStatus('st-vib','ไม่รองรับ (คาดว่าเป็น iOS)','denied');
+        }
+      }
+    }
+  };
+})();
+</script>
+</body>
+</html>
